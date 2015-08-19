@@ -1,0 +1,132 @@
+
+<html>
+   <head>
+      <style type="text/css">
+         .sikuli-code {
+            font-size: 20px;
+            font-family: "Osaka-mono", Monospace;
+            line-height: 1.5em;
+            display:table-cell;
+            white-space: pre-wrap;       /* css-3 */
+            white-space: -moz-pre-wrap !important;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+            width: 99%;   /* remove horizontal scroll-bar when viewing in IE7 */
+         }
+         .sikuli-code img {
+            vertical-align: middle;
+            margin: 2px;
+            border: 1px solid #ccc;
+            padding: 2px;
+            -moz-border-radius: 5px;
+            -webkit-border-radius: 5px;
+            -moz-box-shadow: 1px 1px 1px gray;
+            -webkit-box-shadow: 1px 1px 2px gray;
+         }
+         .kw {
+            color: blue;
+         }
+         .skw {
+            color: rgb(63, 127, 127);
+         }
+
+         .str {
+            color: rgb(128, 0, 0);
+         }
+
+         .dig {
+            color: rgb(128, 64, 0);
+         }
+
+         .cmt {
+            color: rgb(200, 0, 200);
+         }
+
+         h2 {
+            display: inline;
+            font-weight: normal;
+         }
+
+         .info {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-bottom: 20px;
+            display: none;
+         }
+
+         a {
+            color: #9D2900;
+         }
+
+         body {
+            font-family: "Trebuchet MS", Arial, Sans-Serif;
+         }
+
+      </style>
+   </head>
+<body>
+<div class="info">
+<h2>gmail_continue.sikuli</h2> <a href="gmail_continue.zip">(Download this script)</a>
+</div>
+<pre class="sikuli-code">
+<span class="kw">import</span> os
+<span class="kw">import</span> subprocess
+<span class="kw">import</span> sys
+<span class="kw">import</span> org.sikuli.basics.SikulixForJython
+<span class="kw">from</span> sikuli <span class="kw">import</span> *
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime
+<span class="kw">from</span> com.mongodb <span class="kw">import</span> *
+<span class="kw">from</span> com.mongodb.client.model <span class="kw">import</span> *
+<span class="kw">from</span> org.bson <span class="kw">import</span> *
+
+load(<span class="str">'sikulixapi.jar'</span>)
+load(<span class="str">"mongo-java-driver-3.0.0-rc1.jar"</span>)
+ImagePath.add(<span class="str">"E:\\repos\\sikulix-scripts\\gmail_continue.sikuli\\."</span>)
+
+Debug.setDebugLevel(<span class="dig">3</span>)
+m = MongoClient(<span class="str">"10.0.2.2"</span>)
+db = m.getDatabase(<span class="str">"test"</span>)
+coll = db.getCollection(<span class="str">"krug_accounts"</span>)
+
+
+<span class="cmt">#click("add_a_photo.png")</span>
+<span class="cmt">#click("select_a_photo_from_you_computer.png")</span>
+
+<span class="cmt">#type("E:\\repos\\sikulix-scripts\\gmail_reg.sikuli\\01.jpg")</span>
+<span class="cmt">#type(Key.ENTER)</span>
+<span class="cmt">#click("set_as_profile_photo.png")</span>
+<span class="cmt">#click("create_your_profile.png")</span>
+<span class="cmt">#click("continue_to_gmail.png")</span>
+<span class="cmt">#5#click("Next.png")</span>
+<span class="cmt">#click("Go_to_gmail.png")</span>
+<span class="cmt">#click("Gmail_Team.png")</span>
+<span class="cmt">#click("Inbox.png")</span>
+<span class="cmt">#click("icon_smartphone.png")</span>
+<span class="cmt">#click("icon_education.png")</span>
+<span class="cmt">#click("icon_addFriend.png")</span>
+<span class="cmt">#click("icon_picture.png")</span>
+<span class="cmt">#click("icon_notification.png")</span>
+<span class="cmt">#2click("icon_close_notification.png")</span>
+<span class="cmt">#click("icon_notification2.png")</span>
+<span class="cmt">#click("Social_subitem.png")</span>
+<span class="cmt">#click("Google_team_inbox.png")</span>
+<span class="cmt">#click("Inbox.png")</span>
+
+<span class="kw">def</span> take_snapshot():
+  m = MongoClient(<span class="str">"localhost"</span>)
+  db = m.getDatabase(<span class="str">"test"</span>)
+  coll = db.getCollection(<span class="str">"krug_accounts"</span>)
+<span class="cmt"># get id vs that nasty check</span>
+  user = coll.<span class="skw">find</span>(Filters.<span class="kw">and</span>(Filters.exists(<span class="str">"ImageUrl"</span>), Filters.exists(<span class="str">"snapshot"</span>, True), Filters.eq(<span class="str">"GmailExists"</span>, True) )).first()
+  email = user[<span class="str">"EmailAddress"</span>]
+  current_snapshot = user[<span class="str">"snapshot_count"</span>]
+  new_snapshot = email + <span class="str">"-"</span> + str(current_snapshot + <span class="dig">1</span>)
+  <span class="cmt"># print user.toJson()</span>
+
+  coll.updateOne(Filters.eq(<span class="str">"EmailAddress"</span>, email), Document(<span class="str">"$set"</span>, Document(<span class="str">"snapshot_count"</span>, current_snapshot + <span class="dig">1</span>)))
+  <span class="cmt"># subprocess.check_call(["VBoxManage", "snapshot", "win7-2 Clone", "restore", email])</span>
+  subprocess.check_call([<span class="str">"VBoxManage"</span>, <span class="str">"snapshot"</span>, <span class="str">"win7-2 Clone"</span>, <span class="str">"take"</span>, new_snapshot, <span class="str">"--live"</span>])
+</pre>
+</body>
+</html>

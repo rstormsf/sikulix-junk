@@ -1,0 +1,542 @@
+
+<html>
+   <head>
+      <style type="text/css">
+         .sikuli-code {
+            font-size: 20px;
+            font-family: "Osaka-mono", Monospace;
+            line-height: 1.5em;
+            display:table-cell;
+            white-space: pre-wrap;       /* css-3 */
+            white-space: -moz-pre-wrap !important;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+            width: 99%;   /* remove horizontal scroll-bar when viewing in IE7 */
+         }
+         .sikuli-code img {
+            vertical-align: middle;
+            margin: 2px;
+            border: 1px solid #ccc;
+            padding: 2px;
+            -moz-border-radius: 5px;
+            -webkit-border-radius: 5px;
+            -moz-box-shadow: 1px 1px 1px gray;
+            -webkit-box-shadow: 1px 1px 2px gray;
+         }
+         .kw {
+            color: blue;
+         }
+         .skw {
+            color: rgb(63, 127, 127);
+         }
+
+         .str {
+            color: rgb(128, 0, 0);
+         }
+
+         .dig {
+            color: rgb(128, 64, 0);
+         }
+
+         .cmt {
+            color: rgb(200, 0, 200);
+         }
+
+         h2 {
+            display: inline;
+            font-weight: normal;
+         }
+
+         .info {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-bottom: 20px;
+            display: none;
+         }
+
+         a {
+            color: #9D2900;
+         }
+
+         body {
+            font-family: "Trebuchet MS", Arial, Sans-Serif;
+         }
+
+      </style>
+   </head>
+<body>
+<div class="info">
+<h2>deathbycaptcha.sikuli</h2> <a href="deathbycaptcha.zip">(Download this script)</a>
+</div>
+<pre class="sikuli-code">
+<span class="cmt">#!/usr/bin/env python</span>
+<span class="cmt"># -*- coding: UTF-8 -*-</span>
+
+<span class="str">"""Death by Captcha HTTP and socket API clients.
+
+There are two types of Death by Captcha (DBC hereinafter) API: HTTP and
+socket ones.  Both offer the same functionalily, with the socket API
+sporting faster responses and using way less connections.
+
+To access the socket API, use SocketClient class; for the HTTP API, use
+HttpClient class.  Both are thread-safe.  SocketClient keeps a persistent
+connection opened and serializes all API requests sent through it, thus
+it is advised to keep a pool of them if you're script is heavily
+multithreaded.
+
+Both SocketClient and HttpClient give you the following methods:
+
+get_user()
+    Returns your DBC account details as a dict with the following keys:
+
+    "user": your account numeric ID; if login fails, it will be the only
+        item with the value of 0;
+    "rate": your CAPTCHA rate, i.e. how much you will be charged for one
+        solved CAPTCHA in US cents;
+    "balance": your DBC account balance in US cents;
+    "is_banned": flag indicating whether your account is suspended or not.
+
+get_balance()
+    Returns your DBC account balance in US cents.
+
+get_captcha(cid)
+    Returns an uploaded CAPTCHA details as a dict with the following keys:
+
+    "captcha": the CAPTCHA numeric ID; if no such CAPTCHAs found, it will
+        be the only item with the value of 0;
+    "text": the CAPTCHA text, if solved, otherwise None;
+    "is_correct": flag indicating whether the CAPTCHA was solved correctly
+        (DBC can detect that in rare cases).
+
+    The only argument `cid` is the CAPTCHA numeric ID.
+
+get_text(cid)
+    Returns an uploaded CAPTCHA text (None if not solved).  The only argument
+    `cid` is the CAPTCHA numeric ID.
+
+report(cid)
+    Reports an incorrectly solved CAPTCHA.  The only argument `cid` is the
+    CAPTCHA numeric ID.  Returns True on success, False otherwise.
+
+upload(captcha)
+    Rploads a CAPTCHA.  The only argument `captcha` can be either file-like
+    object (any object with `read` method defined, actually, so StringIO
+    will do), or CAPTCHA image file name.  On successul upload you'll get
+    the CAPTCHA details dict (see get_captcha() method).
+
+    NOTE: AT THIS POINT THE UPLOADED CAPTCHA IS NOT SOLVED YET!  You have
+    to poll for its status periodically using get_captcha() or get_text()
+    method until the CAPTCHA is solved and you get the text.
+
+decode(captcha, timeout=DEFAULT_TIMEOUT)
+    A convenient method that uploads a CAPTCHA and polls for its status
+    periodically, but no longer than `timeout` (defaults to 60 seconds).
+    If solved, you'll get the CAPTCHA details dict (see get_captcha()
+    method for details).  See upload() method for details on `captcha`
+    argument.
+
+Visit http://www.deathbycaptcha.com/user/api for updates.
+
+"""</span>
+
+<span class="kw">import</span> base64
+<span class="kw">import</span> binascii
+<span class="kw">import</span> errno
+<span class="kw">import</span> imghdr
+<span class="kw">import</span> random
+<span class="kw">import</span> os
+<span class="kw">import</span> select
+<span class="kw">import</span> socket
+<span class="kw">import</span> sys
+<span class="kw">import</span> threading
+<span class="kw">import</span> time
+<span class="kw">import</span> urllib
+<span class="kw">import</span> urllib2
+<span class="kw">try</span>:
+    <span class="kw">from</span> json <span class="kw">import</span> read <span class="kw">as</span> json_decode, write <span class="kw">as</span> json_encode
+<span class="kw">except</span> ImportError:
+    <span class="kw">try</span>:
+        <span class="kw">from</span> json <span class="kw">import</span> loads <span class="kw">as</span> json_decode, dumps <span class="kw">as</span> json_encode
+    <span class="kw">except</span> ImportError:
+        <span class="kw">from</span> simplejson <span class="kw">import</span> loads <span class="kw">as</span> json_decode, dumps <span class="kw">as</span> json_encode
+
+
+<span class="cmt"># API version and unique software ID</span>
+API_VERSION = <span class="str">'DBC/Python v4.1.2'</span>
+
+<span class="cmt"># Default CAPTCHA timeout and decode() polling interval</span>
+DEFAULT_TIMEOUT = <span class="dig">60</span>
+POLLS_INTERVAL = <span class="dig">5</span>
+
+<span class="cmt"># Base HTTP API url</span>
+HTTP_BASE_URL = <span class="str">'http://api.dbcapi.me/api'</span>
+
+<span class="cmt"># Preferred HTTP API server's response content type, do not change</span>
+HTTP_RESPONSE_TYPE = <span class="str">'application/json'</span>
+
+<span class="cmt"># Socket API server's host &amp; ports range</span>
+SOCKET_HOST = <span class="str">'api.dbcapi.me'</span>
+SOCKET_PORTS = range(<span class="dig">8123</span>, <span class="dig">8131</span>)
+
+
+<span class="kw">def</span> _load_image(captcha):
+    <span class="kw">if</span> hasattr(captcha, <span class="str">'read'</span>):
+        img = captcha.read()
+    <span class="kw">elif</span> <span class="skw">type</span>(captcha) == bytearray:
+        img = captcha
+    <span class="kw">else</span>:
+        img = <span class="str">''</span>
+        <span class="kw">try</span>:
+            captcha_file = open(captcha, <span class="str">'rb'</span>)
+        <span class="kw">except</span> Exception:
+            <span class="kw">raise</span>
+        <span class="kw">else</span>:
+            img = captcha_file.read()
+            captcha_file.close()
+    <span class="kw">if</span> <span class="kw">not</span> len(img):
+        <span class="kw">raise</span> ValueError(<span class="str">'CAPTCHA image is empty'</span>)
+    <span class="kw">elif</span> imghdr.what(None, img) <span class="kw">is</span> None:
+        <span class="kw">raise</span> TypeError(<span class="str">'Unknown CAPTCHA image type'</span>)
+    <span class="kw">else</span>:
+        <span class="kw">return</span> img
+
+
+<span class="kw">class</span> AccessDeniedException(Exception):
+    <span class="kw">pass</span>
+
+
+<span class="kw">class</span> Client(object):
+
+    <span class="str">"""Death by Captcha API Client."""</span>
+
+    <span class="kw">def</span> __init__(self, username, password):
+        self.is_verbose = False
+        self.userpwd = {<span class="str">'username'</span>: username, <span class="str">'password'</span>: password}
+
+    <span class="kw">def</span> _log(self, cmd, msg=<span class="str">''</span>):
+        <span class="kw">if</span> self.is_verbose:
+            <span class="kw">print</span> <span class="str">'%d %s %s'</span> % (time.time(), cmd, msg.rstrip())
+        <span class="kw">return</span> self
+
+    <span class="kw">def</span> close(self):
+        <span class="kw">pass</span>
+
+    <span class="kw">def</span> connect(self):
+        <span class="kw">pass</span>
+
+    <span class="kw">def</span> get_user(self):
+        <span class="str">"""Fetch user details -- ID, balance, rate and banned status."""</span>
+        <span class="kw">raise</span> NotImplementedError()
+
+    <span class="kw">def</span> get_balance(self):
+        <span class="str">"""Fetch user balance (in US cents)."""</span>
+        <span class="kw">return</span> self.get_user().get(<span class="str">'balance'</span>)
+
+    <span class="kw">def</span> get_captcha(self, cid):
+        <span class="str">"""Fetch a CAPTCHA details -- ID, text and correctness flag."""</span>
+        <span class="kw">raise</span> NotImplementedError()
+
+    <span class="kw">def</span> get_text(self, cid):
+        <span class="str">"""Fetch a CAPTCHA text."""</span>
+        <span class="kw">return</span> self.get_captcha(cid).get(<span class="str">'text'</span>) <span class="kw">or</span> None
+
+    <span class="kw">def</span> report(self, cid):
+        <span class="str">"""Report a CAPTCHA as incorrectly solved."""</span>
+        <span class="kw">raise</span> NotImplementedError()
+
+    <span class="kw">def</span> upload(self, captcha):
+        <span class="str">"""Upload a CAPTCHA.
+
+        Accepts file names and file-like objects.  Returns CAPTCHA details
+        dict on success.
+
+        """</span>
+        <span class="kw">raise</span> NotImplementedError()
+
+    <span class="kw">def</span> decode(self, captcha, timeout=DEFAULT_TIMEOUT):
+        <span class="str">"""Try to solve a CAPTCHA.
+
+        See Client.upload() for arguments details.
+
+        Uploads a CAPTCHA, polls for its status periodically with arbitrary
+        timeout (in seconds), returns CAPTCHA details if (correctly) solved.
+
+        """</span>
+        deadline = time.time() + (max(<span class="dig">0</span>, timeout) <span class="kw">or</span> DEFAULT_TIMEOUT)
+        uploaded_captcha = self.upload(captcha)
+        <span class="kw">if</span> uploaded_captcha:
+            <span class="kw">while</span> deadline &gt; time.time() <span class="kw">and</span> <span class="kw">not</span> uploaded_captcha.get(<span class="str">'text'</span>):
+                time.<span class="skw">sleep</span>(POLLS_INTERVAL)
+                pulled = self.get_captcha(uploaded_captcha[<span class="str">'captcha'</span>])
+                <span class="kw">if</span> pulled[<span class="str">'captcha'</span>]==uploaded_captcha[<span class="str">'captcha'</span>]:
+                    uploaded_captcha = pulled
+            <span class="kw">if</span> uploaded_captcha.get(<span class="str">'text'</span>) <span class="kw">and</span> uploaded_captcha.get(<span class="str">'is_correct'</span>):
+                <span class="kw">return</span> uploaded_captcha
+
+
+<span class="kw">class</span> HttpClient(Client):
+
+    <span class="str">"""Death by Captcha HTTP API client."""</span>
+
+    <span class="kw">def</span> __init__(self, *args):
+        Client.__init__(self, *args)
+        self.opener = urllib2.build_opener(urllib2.HTTPRedirectHandler())
+
+    <span class="kw">def</span> _call(self, cmd, payload=None, headers=None):
+        <span class="kw">if</span> headers <span class="kw">is</span> None:
+            headers = {}
+        headers[<span class="str">'Accept'</span>] = HTTP_RESPONSE_TYPE
+        headers[<span class="str">'User-Agent'</span>] = API_VERSION
+        <span class="kw">if</span> hasattr(payload, <span class="str">'items'</span>):
+            payload = urllib.urlencode(payload)
+            self._log(<span class="str">'SEND'</span>, <span class="str">'%s %d %s'</span> % (cmd, len(payload), payload))
+        <span class="kw">else</span>:
+            self._log(<span class="str">'SEND'</span>, <span class="str">'%s'</span> % cmd)
+        <span class="kw">if</span> payload <span class="kw">is</span> <span class="kw">not</span> None:
+            headers[<span class="str">'Content-Length'</span>] = len(payload)
+        <span class="kw">try</span>:
+            response = self.opener.open(urllib2.Request(
+                HTTP_BASE_URL + <span class="str">'/'</span> + cmd.strip(<span class="str">'/'</span>),
+                data=payload,
+                headers=headers
+            )).read()
+        <span class="kw">except</span> urllib2.HTTPError, err:
+            <span class="kw">if</span> <span class="dig">403</span> == err.code:
+                <span class="kw">raise</span> AccessDeniedException(<span class="str">'Access denied, please check your credentials and/or balance'</span>)
+            <span class="kw">elif</span> <span class="dig">400</span> == err.code <span class="kw">or</span> <span class="dig">413</span> == err.code:
+                <span class="kw">raise</span> ValueError(<span class="str">"CAPTCHA was rejected by the service, check if it's a valid image"</span>)
+            <span class="kw">elif</span> <span class="dig">503</span> == err.code:
+                <span class="kw">raise</span> OverflowError(<span class="str">"CAPTCHA was rejected due to service overload, try again later"</span>)
+            <span class="kw">else</span>:
+                <span class="kw">raise</span> err
+        <span class="kw">else</span>:
+            self._log(<span class="str">'RECV'</span>, <span class="str">'%d %s'</span> % (len(response), response))
+            <span class="kw">try</span>:
+                <span class="kw">return</span> json_decode(response)
+            <span class="kw">except</span> Exception:
+                <span class="kw">raise</span> RuntimeError(<span class="str">'Invalid API response'</span>)
+        <span class="kw">return</span> {}
+
+    <span class="kw">def</span> get_user(self):
+        <span class="kw">return</span> self._call(<span class="str">'user'</span>, self.userpwd.copy()) <span class="kw">or</span> {<span class="str">'user'</span>: <span class="dig">0</span>}
+
+    <span class="kw">def</span> get_captcha(self, cid):
+        <span class="kw">return</span> self._call(<span class="str">'captcha/%d'</span> % cid) <span class="kw">or</span> {<span class="str">'captcha'</span>: <span class="dig">0</span>}
+
+    <span class="kw">def</span> report(self, cid):
+        <span class="kw">return</span> <span class="kw">not</span> self._call(<span class="str">'captcha/%d/report'</span> % cid,
+                              self.userpwd.copy()).get(<span class="str">'is_correct'</span>)
+
+    <span class="kw">def</span> upload(self, captcha):
+        boundary = binascii.hexlify(os.urandom(<span class="dig">16</span>))
+
+        body = <span class="str">'\r\n'</span>.join((<span class="str">'\r\n'</span>.join((
+            <span class="str">'--%s'</span> % boundary,
+            <span class="str">'Content-Disposition: form-data; name="%s"'</span> % k,
+            <span class="str">'Content-Type: text/plain'</span>,
+            <span class="str">'Content-Length: %d'</span> % len(str(v)),
+            <span class="str">''</span>,
+            str(v)
+        ))) <span class="kw">for</span> k, v <span class="kw">in</span> self.userpwd.items())
+
+        img = _load_image(captcha)
+        body += <span class="str">'\r\n'</span>.join((
+            <span class="str">''</span>,
+            <span class="str">'--%s'</span> % boundary,
+            <span class="str">'Content-Disposition: form-data; name="captchafile"; filename="captcha"'</span>,
+            <span class="str">'Content-Type: application/octet-stream'</span>,
+            <span class="str">'Content-Length: %d'</span> % len(img),
+            <span class="str">''</span>,
+            img,
+            <span class="str">'--%s--'</span> % boundary,
+            <span class="str">''</span>
+        ))
+
+        response = self._call(<span class="str">'captcha'</span>, body, {
+            <span class="str">'Content-Type'</span>: <span class="str">'multipart/form-data; boundary="%s"'</span> % boundary
+        }) <span class="kw">or</span> {}
+        <span class="kw">if</span> response.get(<span class="str">'captcha'</span>):
+            <span class="kw">return</span> response
+
+
+<span class="kw">class</span> SocketClient(Client):
+
+    <span class="str">"""Death by Captcha socket API client."""</span>
+
+    TERMINATOR = <span class="str">'\r\n'</span>
+
+    <span class="kw">def</span> __init__(self, *args):
+        Client.__init__(self, *args)
+        self.socket_lock = threading.Lock()
+        self.socket = None
+
+    <span class="kw">def</span> close(self):
+        <span class="kw">if</span> self.socket:
+            self._log(<span class="str">'CLOSE'</span>)
+            <span class="kw">try</span>:
+                self.socket.shutdown(socket.SHUT_RDWR)
+            <span class="kw">except</span> socket.error:
+                <span class="kw">pass</span>
+            <span class="kw">finally</span>:
+                self.socket.close()
+                self.socket = None
+
+    <span class="kw">def</span> connect(self):
+        <span class="kw">if</span> <span class="kw">not</span> self.socket:
+            self._log(<span class="str">'CONN'</span>)
+            host = (socket.gethostbyname(SOCKET_HOST),
+                    random.choice(SOCKET_PORTS))
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(<span class="dig">0</span>)
+            <span class="kw">try</span>:
+                self.socket.connect(host)
+            <span class="kw">except</span> socket.error, err:
+                <span class="kw">if</span> err.args[<span class="dig">0</span>] <span class="kw">not</span> <span class="kw">in</span> (errno.EAGAIN, errno.EWOULDBLOCK, errno.EINPROGRESS):
+                    self.close()
+                    <span class="kw">raise</span> err
+        <span class="kw">return</span> self.socket
+
+    <span class="kw">def</span> __del__(self):
+        self.close()
+
+    <span class="kw">def</span> _sendrecv(self, sock, buf):
+        self._log(<span class="str">'SEND'</span>, buf)
+        fds = [sock]
+        buf += self.TERMINATOR
+        response = <span class="str">''</span>
+        <span class="kw">while</span> True:
+            rds, wrs, exs = select.select((<span class="kw">not</span> buf <span class="kw">and</span> fds) <span class="kw">or</span> [],
+                                          (buf <span class="kw">and</span> fds) <span class="kw">or</span> [],
+                                          fds,
+                                          POLLS_INTERVAL)
+            <span class="kw">if</span> exs:
+                <span class="kw">raise</span> IOError(<span class="str">'select() failed'</span>)
+            <span class="kw">try</span>:
+                <span class="kw">if</span> wrs:
+                    <span class="kw">while</span> buf:
+                        buf = buf[wrs[<span class="dig">0</span>].send(buf):]
+                <span class="kw">elif</span> rds:
+                    <span class="kw">while</span> True:
+                        s = rds[<span class="dig">0</span>].recv(<span class="dig">256</span>)
+                        <span class="kw">if</span> <span class="kw">not</span> s:
+                            <span class="kw">raise</span> IOError(<span class="str">'recv(): connection lost'</span>)
+                        <span class="kw">else</span>:
+                            response += s
+            <span class="kw">except</span> socket.error, err:
+                <span class="kw">if</span> err.args[<span class="dig">0</span>] <span class="kw">not</span> <span class="kw">in</span> (errno.EAGAIN, errno.EWOULDBLOCK, errno.EINPROGRESS):
+                    <span class="kw">raise</span> err
+            <span class="kw">if</span> response.endswith(self.TERMINATOR):
+                self._log(<span class="str">'RECV'</span>, response)
+                <span class="kw">return</span> response.rstrip(self.TERMINATOR)
+        <span class="kw">raise</span> IOError(<span class="str">'send/recv timed out'</span>)
+
+    <span class="kw">def</span> _call(self, cmd, data=None):
+        <span class="kw">if</span> data <span class="kw">is</span> None:
+            data = {}
+        data[<span class="str">'cmd'</span>] = cmd
+        data[<span class="str">'version'</span>] = API_VERSION
+        request = json_encode(data)
+
+        response = None
+        <span class="kw">for</span> _ <span class="kw">in</span> range(<span class="dig">2</span>):
+            <span class="kw">if</span> <span class="kw">not</span> self.socket <span class="kw">and</span> cmd != <span class="str">'login'</span>:
+                self._call(<span class="str">'login'</span>, self.userpwd.copy())
+            self.socket_lock.acquire()
+            <span class="kw">try</span>:
+                sock = self.connect()
+                response = self._sendrecv(sock, request)
+            <span class="kw">except</span> IOError, err:
+                sys.stderr.write(str(err) + <span class="str">"\n"</span>)
+                self.close()
+            <span class="kw">except</span> socket.error, err:
+                sys.stderr.write(str(err) + <span class="str">"\n"</span>)
+                self.close()
+                <span class="kw">raise</span> IOError(<span class="str">'Connection refused'</span>)
+            <span class="kw">else</span>:
+                <span class="kw">break</span>
+            <span class="kw">finally</span>:
+                self.socket_lock.release()
+
+        <span class="kw">if</span> response <span class="kw">is</span> None:
+            <span class="kw">raise</span> IOError(<span class="str">'Connection lost or timed out during API request'</span>)
+
+        <span class="kw">try</span>:
+            response = json_decode(response)
+        <span class="kw">except</span> Exception:
+            <span class="kw">raise</span> RuntimeError(<span class="str">'Invalid API response'</span>)
+
+        <span class="kw">if</span> <span class="kw">not</span> response.get(<span class="str">'error'</span>):
+            <span class="kw">return</span> response
+
+        error = response[<span class="str">'error'</span>]
+        <span class="kw">if</span> error <span class="kw">in</span> (<span class="str">'not-logged-in'</span>, <span class="str">'invalid-credentials'</span>):
+            <span class="kw">raise</span> AccessDeniedException(<span class="str">'Access denied, check your credentials'</span>)
+        <span class="kw">elif</span> <span class="str">'banned'</span> == error:
+            <span class="kw">raise</span> AccessDeniedException(<span class="str">'Access denied, account is suspended'</span>)
+        <span class="kw">elif</span> <span class="str">'insufficient-funds'</span> == error:
+            <span class="kw">raise</span> AccessDeniedException(<span class="str">'CAPTCHA was rejected due to low balance'</span>)
+        <span class="kw">elif</span> <span class="str">'invalid-captcha'</span> == error:
+            <span class="kw">raise</span> ValueError(<span class="str">'CAPTCHA is not a valid image'</span>)
+        <span class="kw">elif</span> <span class="str">'service-overload'</span> == error:
+            <span class="kw">raise</span> OverflowError(<span class="str">'CAPTCHA was rejected due to service overload, try again later'</span>)
+        <span class="kw">else</span>:
+            self.socket_lock.acquire()
+            self.close()
+            self.socket_lock.release()
+            <span class="kw">raise</span> RuntimeError(<span class="str">'API server error occured: %s'</span> % error)
+
+    <span class="kw">def</span> get_user(self):
+        <span class="kw">return</span> self._call(<span class="str">'user'</span>) <span class="kw">or</span> {<span class="str">'user'</span>: <span class="dig">0</span>}
+
+    <span class="kw">def</span> get_captcha(self, cid):
+        <span class="kw">return</span> self._call(<span class="str">'captcha'</span>, {<span class="str">'captcha'</span>: cid}) <span class="kw">or</span> {<span class="str">'captcha'</span>: <span class="dig">0</span>}
+
+    <span class="kw">def</span> upload(self, captcha):
+        response = self._call(<span class="str">'upload'</span>, {
+            <span class="str">'captcha'</span>: base64.b64encode(_load_image(captcha))
+        })
+        <span class="kw">if</span> response.get(<span class="str">'captcha'</span>):
+            uploaded_captcha = dict(
+                (k, response.get(k))
+                <span class="kw">for</span> k <span class="kw">in</span> (<span class="str">'captcha'</span>, <span class="str">'text'</span>, <span class="str">'is_correct'</span>)
+            )
+            <span class="kw">if</span> <span class="kw">not</span> uploaded_captcha[<span class="str">'text'</span>]:
+                uploaded_captcha[<span class="str">'text'</span>] = None
+            <span class="kw">return</span> uploaded_captcha
+
+    <span class="kw">def</span> report(self, cid):
+        <span class="kw">return</span> <span class="kw">not</span> self._call(<span class="str">'report'</span>, {<span class="str">'captcha'</span>: cid}).get(<span class="str">'is_correct'</span>)
+
+
+<span class="kw">if</span> <span class="str">'__main__'</span> == __name__:
+    <span class="cmt"># Put your DBC username &amp; password here:</span>
+    <span class="cmt">#client = HttpClient(sys.argv[1], sys.argv[2])</span>
+    client = SocketClient(sys.argv[<span class="dig">1</span>], sys.argv[<span class="dig">2</span>])
+    client.is_verbose = True
+
+    <span class="kw">print</span> <span class="str">'Your balance is %s US cents'</span> % client.get_balance()
+
+    <span class="kw">for</span> fn <span class="kw">in</span> sys.argv[<span class="dig">3</span>:]:
+        <span class="kw">try</span>:
+            <span class="cmt"># Put your CAPTCHA image file name or file-like object, and optional</span>
+            <span class="cmt"># solving timeout (in seconds) here:</span>
+            captcha = client.decode(fn, DEFAULT_TIMEOUT)
+        <span class="kw">except</span> Exception, e:
+            sys.stderr.write(<span class="str">'Failed uploading CAPTCHA: %s\n'</span> % (e, ))
+            captcha = None
+
+        <span class="kw">if</span> captcha:
+            <span class="kw">print</span> <span class="str">'CAPTCHA %d solved: %s'</span> % \
+                  (captcha[<span class="str">'captcha'</span>], captcha[<span class="str">'text'</span>])
+
+            <span class="cmt"># Report as incorrectly solved if needed.  Make sure the CAPTCHA was</span>
+            <span class="cmt"># in fact incorrectly solved!</span>
+            <span class="cmt">#try:</span>
+            <span class="cmt">#    client.report(captcha['captcha'])</span>
+            <span class="cmt">#except Exception, e:</span>
+            <span class="cmt">#    sys.stderr.write('Failed reporting CAPTCHA: %s\n' % (e, ))</span>
+
+</pre>
+</body>
+</html>

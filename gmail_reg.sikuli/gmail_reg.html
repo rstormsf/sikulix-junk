@@ -1,0 +1,180 @@
+
+<html>
+   <head>
+      <style type="text/css">
+         .sikuli-code {
+            font-size: 20px;
+            font-family: "Osaka-mono", Monospace;
+            line-height: 1.5em;
+            display:table-cell;
+            white-space: pre-wrap;       /* css-3 */
+            white-space: -moz-pre-wrap !important;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+            width: 99%;   /* remove horizontal scroll-bar when viewing in IE7 */
+         }
+         .sikuli-code img {
+            vertical-align: middle;
+            margin: 2px;
+            border: 1px solid #ccc;
+            padding: 2px;
+            -moz-border-radius: 5px;
+            -webkit-border-radius: 5px;
+            -moz-box-shadow: 1px 1px 1px gray;
+            -webkit-box-shadow: 1px 1px 2px gray;
+         }
+         .kw {
+            color: blue;
+         }
+         .skw {
+            color: rgb(63, 127, 127);
+         }
+
+         .str {
+            color: rgb(128, 0, 0);
+         }
+
+         .dig {
+            color: rgb(128, 64, 0);
+         }
+
+         .cmt {
+            color: rgb(200, 0, 200);
+         }
+
+         h2 {
+            display: inline;
+            font-weight: normal;
+         }
+
+         .info {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-bottom: 20px;
+            display: none;
+         }
+
+         a {
+            color: #9D2900;
+         }
+
+         body {
+            font-family: "Trebuchet MS", Arial, Sans-Serif;
+         }
+
+      </style>
+   </head>
+<body>
+<div class="info">
+<h2>deathbycaptcha.sikuli</h2> <a href="deathbycaptcha.zip">(Download this script)</a>
+</div>
+<pre class="sikuli-code">
+<span class="kw">import</span> os
+<span class="kw">from</span> deathbycaptcha <span class="kw">import</span> *
+<span class="kw">import</span> subprocess
+<span class="kw">import</span> sys
+<span class="kw">import</span> org.sikuli.basics.SikulixForJython
+<span class="kw">from</span> sikuli <span class="kw">import</span> *
+
+<span class="kw">def</span> solve_captcha(filename):
+  client = SocketClient(<span class="str">"LOGIN"</span>, <span class="str">"PASSWORD"</span>)
+  <span class="cmt"># client.is_verbose = True</span>
+  DEFAULT_TIMEOUT = <span class="dig">60</span>
+  <span class="kw">print</span> <span class="str">'Your balance is %s US cents'</span> % client.get_balance()
+
+  <span class="kw">try</span>:
+      <span class="cmt"># Put your CAPTCHA image file name or file-like object, and optional</span>
+      <span class="cmt"># solving timeout (in seconds) here:</span>
+      captcha = client.decode(filename + <img src=".png" />, DEFAULT_TIMEOUT)
+  <span class="kw">except</span> Exception, e:
+      sys.stderr.write(<span class="str">'Failed uploading CAPTCHA: %s\n'</span> % (e, ))
+      captcha = None
+
+  <span class="kw">if</span> captcha:
+      <span class="kw">print</span> <span class="str">'CAPTCHA %d solved: %s'</span> % \
+            (captcha[<span class="str">'captcha'</span>], captcha[<span class="str">'text'</span>])
+      <span class="kw">return</span> captcha[<span class="str">'text'</span>]
+
+load(<span class="str">'sikulixapi.jar'</span>)
+load(<span class="str">"mongo-java-driver-3.0.0-rc1.jar"</span>)
+ImagePath.add(<span class="str">"E:\\repos\\sikulix-scripts\\gmail_reg.sikuli\\."</span>)
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime
+
+<span class="kw">from</span> com.mongodb <span class="kw">import</span> *
+<span class="kw">from</span> com.mongodb.client.model <span class="kw">import</span> *
+<span class="kw">from</span> org.bson <span class="kw">import</span> *
+
+Debug.setDebugLevel(<span class="dig">3</span>)
+m = MongoClient(<span class="str">"10.0.2.2"</span>)
+db = m.getDatabase(<span class="str">"test"</span>)
+coll = db.getCollection(<span class="str">"krug_accounts"</span>)
+
+<span class="cmt"># user = coll.find(Filters.and(Filters.exists("ImageUrl"), Filters.exists("snapshot", False))).first()</span>
+user= coll.<span class="skw">find</span>(Filters.eq(<span class="str">"_id"</span>, types.ObjectId(os.environ[<span class="str">'ID'</span>]))).first()
+email = user[<span class="str">"EmailAddress"</span>]
+<span class="kw">print</span> email
+<span class="kw">print</span> user.toJson()
+
+
+<span class="cmt"># click("1429849365038.png")</span>
+<span class="skw">click</span>(<img src="1429849365038.png" />)
+<span class="skw">sleep</span>(<span class="dig">5</span>)
+<span class="skw">type</span>(<span class="str">"l"</span>, Key.CTRL)
+<span class="skw">type</span>(<span class="str">"gmail.com"</span>)
+<span class="skw">type</span>(Key.ENTER)
+<span class="skw">sleep</span>(<span class="dig">5</span>)
+<span class="skw">click</span>(<img src="1429851115779.png" />)
+<span class="skw">click</span>(<img src="1429851320547.png" />)
+
+
+<span class="skw">type</span>(user[<span class="str">"GivenName"</span>])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(user[<span class="str">"Surname"</span>])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(user[<span class="str">"GmailEmail"</span>])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(user[<span class="str">"Password"</span>])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(user[<span class="str">"Password"</span>])
+<span class="skw">type</span>(Key.TAB)
+monthArr = [<span class="dig">0</span>, <span class="str">"Jan"</span>, <span class="str">"Feb"</span>, <span class="str">"Mar"</span>, <span class="str">"Apr"</span>, <span class="str">"May"</span>, <span class="str">"Jun"</span>, <span class="str">"Jul"</span>, <span class="str">"Aug"</span>, <span class="str">"Sep"</span>, <span class="str">"Oct"</span>, <span class="str">"Nov"</span>, <span class="str">"Dec"</span>]
+birthday = user[<span class="str">"Birthday"</span>]
+dob = datetime.strptime(birthday, <span class="str">'%m/%d/%Y'</span>).date()
+<span class="skw">type</span>(monthArr[dob.month])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(str(dob.day))
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(str(dob.year))
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(<span class="str">"F"</span>)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(user[<span class="str">"EmailAddress"</span>])
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+reg = Region(<span class="dig">818</span>,<span class="dig">838</span>,<span class="dig">302</span>,<span class="dig">62</span>)
+dir = <span class="str">"E:\\repos\\sikulix-scripts\\gmail_reg.sikuli\\"</span>
+filename = <span class="str">"captcha"</span>
+screen =reg.getScreen().<span class="skw">capture</span>(<span class="dig">746</span>,<span class="dig">676</span>,<span class="dig">299</span>,<span class="dig">60</span>).getFile(dir, filename)
+captcha = solve_captcha(filename)
+<span class="skw">type</span>(captcha)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.TAB)
+<span class="skw">type</span>(Key.SPACE)
+<span class="cmt">#type(Key.ENTER)</span>
+
+
+
+
+<span class="cmt">#debug</span>
+<span class="skw">click</span>(<img src="1429849365038.png" />)
+<span class="cmt">#debug</span>
+
+</pre>
+</body>
+</html>
